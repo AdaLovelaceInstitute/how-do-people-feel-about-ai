@@ -1,0 +1,253 @@
+---
+  title: "Net benefit analysis"
+output: html_document
+date: "2023-01-31"
+---
+  
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# setwd("..") # Use this line to set the working directory on your machine where the data is located. 
+```
+
+```{r}
+install.packages("tidyverse")
+install.packages("ggplot2")
+install.packages("haven")
+install.packages("scales")
+install.packages("readr")
+install.packages("data.table")
+install.packages("epiDisplay")
+```
+
+
+```{r}
+library(tidyverse)
+library(ggplot2)
+library(haven)
+library(scales)
+library(readr)
+library(data.table)
+library(epiDisplay)
+```
+
+Read raw data
+```{r}
+df1 <- read_dta("262400371_Public Attitudes to AI_client version.dta")
+
+# Prep data
+# Remove ppt identifying as 'other' and remove 16 year old 
+df1 <- df1 %>%
+  filter(is.na(RS_Sex) | RS_Sex != 3) %>%
+  filter(CS_Age != "16")
+```
+
+
+
+
+Transform to data.table format
+```{r}
+df1_dt <- as.data.table(df1)
+```
+
+
+Now we will re-code all the variables of interest. We need to consider the "DK" and "Prefer not to say" as missing, in order to compute the net benefit. 
+For starters, let's list the variable names (for benefits) so we are on the same page:
+
+BENA_MP: Face recognition unblock tech
+BENA_BC: Face recognition border control
+BENA_PS: Face recognition politicng
+BENA_WEL: Eligibility welfare benefits
+BENA_JOB: Elejibility jobs
+BENA_CAN: Predict risk cancer
+BENA_LOAN: Predict risk no pay loan
+BENA_SMC: Social media ads consumer products
+BENA_SMP: Social media ads political parties
+BENA_VASS: Virtual speakers
+BENA_VAH: Healthcare virtual assistant
+BENA_RVC: Robotic vacuumn cleaner
+BENA_RCA: Robotic care assistant
+BENA_DC: Driverless cars
+BENA_AW: Autonomous weapons
+BENA_CCR: AI simulation for climate change research
+BENA_VR: VR education
+
+CONA_* is the same, but about the concerns. 
+```{r}
+## We copy the dataset
+
+df1_dt_1 = copy(df1_dt)     
+df1_dt_1 <- as.data.table(df1_dt)
+
+## We create a list with each AI application identifier
+
+list_variables <- c("MP", "BC", "PS", "WEL", "JOB", "CAN", "LOAN", "SMC", "SMP",
+                    "VASS", "VAH", "RVC", "RCA", "DC", "AW", "CCR", "VR")
+
+
+## Now we can re-code the variables for benefits and concerns, in order to add
+## missing data and flip the scale.
+
+
+for(i in (list_variables)) {
+  BENA <- paste0('BENA_',i)
+  CONA <- paste0('CONA_',i)
+  df1_dt_1[get(BENA)== 6, (BENA):= NA] 
+  df1_dt_1[get(BENA)== 5, (BENA):= NA]
+  df1_dt_1[get(BENA)== 4, (BENA):= 0] 
+  df1_dt_1[get(BENA)== 3, (BENA):= -1] 
+  df1_dt_1[get(BENA)== 2, (BENA):= -2] 
+  df1_dt_1[get(BENA)== 1, (BENA):= -3] 
+  df1_dt_1[get(BENA)== -1, (BENA):= 1] 
+  df1_dt_1[get(BENA)== -2, (BENA):= 2] 
+  df1_dt_1[get(BENA)== -3, (BENA):= 3] 
+  df1_dt_1[get(CONA)== 6, (CONA):= NA] 
+  df1_dt_1[get(CONA)== 5, (CONA):= NA]
+  df1_dt_1[get(CONA)== 4, (CONA):= 0] 
+  df1_dt_1[get(CONA)== 3, (CONA):= -1] 
+  df1_dt_1[get(CONA)== 2, (CONA):= -2] 
+  df1_dt_1[get(CONA)== 1, (CONA):= -3] 
+  df1_dt_1[get(CONA)== -1, (CONA):= 1] 
+  df1_dt_1[get(CONA)== -2, (CONA):= 2] 
+  df1_dt_1[get(CONA)== -3, (CONA):= 3] 
+}
+
+
+## We also need to re-code the variables for AWARENESS
+
+for(i in (list_variables)) {
+  AWARE <- paste0('AWARE_',i)
+  df1_dt_1[get(AWARE)== 4, (AWARE):= NA] 
+  df1_dt_1[get(AWARE)== 2, (AWARE):= 0] 
+  df1_dt_1[get(AWARE)== 3, (AWARE):= 0] 
+}
+
+
+## And EXPERIENCE
+
+
+list_variables_2 <- c("MP", "BC", "PS", "WEL", "JOB", "CAN", "LOAN", "SMC", "SMP",
+                    "VASS", "VAH", "RVC", "VR")
+
+for(i in (list_variables_2)) {
+  EXP <- paste0('EXP_',i)
+  df1_dt_1[get(EXP)== 5, (EXP):= NA] 
+  df1_dt_1[get(EXP)== 4, (EXP):= NA]
+  df1_dt_1[get(EXP)== 2, (EXP):= 1] 
+  df1_dt_1[get(EXP)== 3, (EXP):= 0] 
+}
+
+
+
+```
+
+Now, following the same approach, we can create the net benefit variables
+```{r}
+for(i in (list_variables)) {
+  BENA <- paste0('BENA_',i)
+  CONA <- paste0('CONA_',i)
+  NETBEN <- paste0('NETBEN_',i)
+  df1_dt_1[is.na(get(BENA))==F & is.na(get(CONA))==F, (NETBEN) := get(BENA)-get(CONA)] 
+}
+
+
+df1_dt_1[, tab1(NETBEN_CCR, graph=F)] ##2320 NA
+
+#Double check in several ways
+df1_dt_1[is.na(BENA_CCR)==T | is.na(CONA_CCR)==T, tab1(NETBEN_CCR, graph=F)]
+df1_dt_1[, tab1(BENA_CCR-CONA_CCR, graph=F)]
+
+df1_dt_1[, tab1(NETBEN_VASS, graph=F)] ##2179
+
+#Double check in several ways
+df1_dt_1[is.na(BENA_VASS)==T | is.na(CONA_VASS)==T, tab1(NETBEN_VASS, graph=F)]
+df1_dt_1[, tab1(BENA_VASS-CONA_VASS, graph=F)]
+
+```
+
+We can look now at whethet the mean values make sense for each of the technologies
+```{r}
+df1_dt_1[, summ(NETBEN_MP, graph=F)] 
+df1_dt_1[, summ(NETBEN_BC, graph=F)] 
+df1_dt_1[, summ(NETBEN_PS, graph=F)] 
+df1_dt_1[, summ(NETBEN_WEL, graph=F)] 
+df1_dt_1[, summ(NETBEN_JOB, graph=F)] 
+df1_dt_1[, summ(NETBEN_CAN, graph=F)] 
+df1_dt_1[, summ(NETBEN_LOAN, graph=F)] 
+df1_dt_1[, summ(NETBEN_SMC, graph=F)]
+df1_dt_1[, summ(NETBEN_SMP, graph=F)]
+df1_dt_1[, summ(NETBEN_VASS, graph=F)] 
+df1_dt_1[, summ(NETBEN_VAH, graph=F)] 
+df1_dt_1[, summ(NETBEN_RVC, graph=F)] 
+df1_dt_1[, summ(NETBEN_RCA, graph=F)] 
+df1_dt_1[, summ(NETBEN_DC, graph=F)] 
+df1_dt_1[, summ(NETBEN_AW, graph=F)] 
+df1_dt_1[, summ(NETBEN_CCR, graph=F)] 
+df1_dt_1[, summ(NETBEN_VR, graph=F)] 
+```
+
+Now it is time to produce a graph showing the net benefit of each of the 18 technologies, in a comparative way
+```{r}
+
+
+# FIRST WE CREATE THE WEIGHTED MEANS FOR EACH TECHNOLOGY
+
+WeightedMeans <- lapply(df1_dt_1[ , c("NETBEN_MP", "NETBEN_BC", "NETBEN_PS", "NETBEN_WEL", "NETBEN_JOB", "NETBEN_CAN", "NETBEN_LOAN", "NETBEN_SMC", "NETBEN_SMP","NETBEN_VASS", "NETBEN_VAH", "NETBEN_RVC", "NETBEN_RCA", "NETBEN_DC", "NETBEN_AW", "NETBEN_CCR", "NETBEN_VR")], weighted.mean,  w = df1_dt_1$PV25_Weight, na.rm = T)
+
+# Now we put this in the correct format
+
+WeightedMeans_df <- data.frame(WeightedMeans)
+
+WeightedMeans_dt <- as.data.table(WeightedMeans_df)
+
+# transpose
+t_WeightedMeans_dt <- transpose(WeightedMeans_dt)
+t_WeightedMeans_dt[, VarNames := colnames(WeightedMeans_dt)]
+colnames(t_WeightedMeans_dt)[1] <- "Net Benefit" 
+
+t_WeightedMeans_df <- data.frame(t_WeightedMeans_dt)
+
+#We re-code the names so they look nice in the graph
+
+t_WeightedMeans_df_RC <- t_WeightedMeans_df %>%
+  mutate("VarNames" = 
+           dplyr::recode(VarNames, 
+                         "NETBEN_MP" = "Face recognition: unblock",
+                         "NETBEN_BC" = "Face recognition: border",
+                         "NETBEN_PS" = "Face recognition: policing",
+                         "NETBEN_WEL" = "Eligibility: welfare",
+                         "NETBEN_JOB" = "Eligibility: jobs",
+                         "NETBEN_CAN" = "Predict: risk cancer",
+                         "NETBEN_LOAN" = "Predict: loan",
+                         "NETBEN_SMC" = "Social media ads: product",
+                         "NETBEN_SMP" = "Social media ads: political",
+                         "NETBEN_VASS" = "Virtual assistant: speaker",
+                         "NETBEN_VAH" = "Virtual assistsant: health",
+                         "NETBEN_RVC" = "Robotics: vacuum",
+                         "NETBEN_RCA" = "Robotics: care assistant",
+                         "NETBEN_DC" = "Autonomous: cars",
+                         "NETBEN_AW" = "Autonomous: weapons",
+                         "NETBEN_CCR" = "Simulation: climate change",
+                         "NETBEN_VR" = "Simulation: VR education"))
+
+#And now we can plot
+
+
+t_WeightedMeans_df_RC <- t_WeightedMeans_df_RC %>% mutate(VarNames = fct_reorder(VarNames, Net.Benefit))
+
+
+p<-ggplot(data=t_WeightedMeans_df_RC, aes(x=Net.Benefit, y=VarNames)) +
+  geom_bar(stat="identity") +
+  ggtitle("Net benefit across AI applications") +
+  xlab("Net benefit") + ylab("AI application") + scale_x_continuous(limits=c(-3, 3), n.breaks = 6) + 
+  geom_col(fill = "#FF6A58") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+p
+
+
+
+```
+
