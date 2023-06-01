@@ -5,8 +5,7 @@ This repository contains:
 - The report (.pdf)
 - The raw dataset (.dta/.csv)
 - The dataset codebook (.xls) 
-- Questionnaire (.pdf)
-- Methodology technical report (.pdf)
+- Methodology technical report (including questionnaire) (.pdf)
 - R analysis scripts (.Rmd)
 
 ## Contributing to this repository
