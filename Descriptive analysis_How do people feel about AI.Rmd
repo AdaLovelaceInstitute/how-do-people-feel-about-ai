@@ -1,0 +1,1491 @@
+---
+title: "Public Attitudes_final script"
+output:
+  word_document: default
+  html_document: default
+date: "2023-05-10"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+# setwd("..") # Use this line to set the working directory on your machine where the data is located. 
+```
+
+```{r}
+install.packages("tidyverse")
+install.packages("haven")
+install.packages("scales")
+install.packages("psych")
+install.packages("survey")
+install.packages("jtools")
+install.packages("nFactors")
+install.packages("sjPlot") 
+install.packages("purrr")
+install.packages("broom")
+install.packages("labelled")
+install.packages("stringr")
+install.packages("descr")
+```
+
+
+```{r}
+library(tidyverse)
+library(haven)
+library(scales)
+library(psych)
+library(survey)
+library(jtools)
+library(nFactors)
+library(sjPlot) 
+library(purrr)
+library(broom)
+library(labelled)
+library(stringr)
+library(descr)
+```
+
+```{r}
+# Read dataset
+df1 <- read_dta("262400371_Public Attitudes to AI_client version.dta")
+```
+
+```{r}
+# Prep data
+# Remove ppt identifying as 'other' and remove 16 year old 
+df1 <- df1 %>%
+  filter(is.na(RS_Sex) | RS_Sex != 3) %>%
+  filter(CS_Age != "16")
+
+# combine ethnicity groupings
+df1 <- df1 %>%
+  mutate(RS_Ethnicity_Combined = 
+           case_when(
+             RS_Ethnicity_Reduced == 1 ~ 1, 
+             RS_Ethnicity_Reduced == 2 ~ 2,
+             RS_Ethnicity_Reduced == 3 ~ 3,
+             RS_Ethnicity_Reduced == 4 | RS_Ethnicity_Reduced == 5 | RS_Ethnicity_Reduced == 6 ~ 4 
+           ))
+
+            #"1" = "White",
+            # "2" = "Asian or Asian British",
+            # "3" = "Black British, Caribbean or African",
+            # "4" = "Any other ethnic group"
+
+df1 <- df1 %>%
+  mutate(Region_combined = 
+           case_when(
+             CS_Region_N < 10 ~ 1, #eng
+             CS_Region_N == 10 ~ 2, #ni
+             CS_Region_N == 11 ~ 3, #scotland
+             CS_Region_N == 12 ~ 4 # wales
+           ))
+```
+
+
+```{r}
+## functions to simplify data tidying
+
+## recoding technology labels
+recode_technologies <- function(Technology_specific) {
+  recode(Technology_specific,
+                  "WEL" = "Welfare eligibility",
+                "JOB" =  "Job eligibility",
+                "CAN" =  "Cancer risk",
+                "LOAN" = "Loan repayment risk", 
+                "MP" =  "Mobile phone unlock",
+                 "BC" = "Border control",
+                 "PS" = "Police surveillance",
+
+                "AW"  = "Autonomous weapons", 
+                "DC" =  "Driverless cars",
+                "RCA" = "Robotic care assistant",
+               "RVC" ="Robotic vacuum cleaner",
+                                                                         
+               "SMC"=  "Targeted consumer ads",
+                "SMP" = "Targeted political ads",
+                                                                         
+                "VASS"=  "Smart speaker",
+                "VAH"=  "Virtual healthcare assistant",
+                                 
+              "CCR"=   "Climate change simulation",
+                "VR"=  "Education simulations")
+  
+}
+
+## list of demographic variables of interest
+demog <- df1 %>%
+  remove_val_labels() %>%
+  dplyr::select(
+  Respondent_ID, PV25_Weight,
+  RS_Ethnicity_Combined,
+  CS_Age_Band,
+  RS_Sex,
+  RS_EducationLevel,
+  DR_Socio_Eco
+  ) %>%
+  mutate(RS_Ethnicity_Combined = 
+           dplyr::recode(RS_Ethnicity_Combined,
+             "1" = "White",
+             "2" = "Asian or Asian British",
+             "3" = "Black British, Caribbean or African",
+             "4" = "Any other ethnic group"
+           )) %>%
+  mutate(CS_Age_Band = 
+           dplyr::recode(CS_Age_Band,
+             "1" = "18-24 yrs",
+             "2" = "25-34 yrs",
+             "3" = "35-44 yrs",
+             "4" = "45-54 yrs",
+             "5" = "55-64 yrs",
+             "6" = "65-74 yrs",
+             "7" = "75+ yrs"
+           )) %>%
+  mutate(RS_Sex = 
+           dplyr::recode(RS_Sex,
+             "1" = "Male",
+             "2" = "Female")) %>%
+  mutate(RS_EducationLevel = 
+           dplyr::recode(RS_EducationLevel,
+             "1" = "Degree level qualification(s)",
+             "2" = "Non-degree level qualifications",
+             "3" = "No academic or vocational qualifications")) %>%
+  mutate(DR_Socio_Eco = 
+           dplyr::recode(DR_Socio_Eco,
+             "1" = "SEC1, 2",
+             "2" = "SEC3",
+             "3" = "SEC4",
+             "4" = "SEC5",
+             "5" = "SEC6, 7",
+             "6" = "SEC8",
+             "7" = "Students")) %>%
+  pivot_longer(names_to = "Q_Demo",
+               values_to = "A_Demo",
+               RS_Ethnicity_Combined:DR_Socio_Eco)
+
+# list of levels 
+demo_list <- c("White",
+  "Asian or Asian British",
+  "Black British, Caribbean or African", 
+  "Any other ethnic group", 
+  
+  "18-24 yrs",
+  "25-34 yrs",
+  "35-44 yrs",
+  "45-54 yrs",
+  "55-64 yrs",
+  "65-74 yrs",
+  "75+ yrs", 
+  
+  "Male",
+  "Female",
+  "Identify in another way",
+  
+  "Degree level qualification(s)",
+  "Non-degree level qualifications",
+  "No academic or vocational qualifications",
+  
+  "SEC1, 2",
+  "SEC3",
+  "SEC4",
+  "SEC5",
+  "SEC6, 7",
+  "SEC8",
+  "Students", 
+  
+  "Total" )
+```
+
+
+
+
+####### Descriptive analysis #########
+
+Awareness of technology
+```{r}
+# prep data
+df2.1 <- df1 %>%
+  # remove all labels
+  remove_val_labels() %>%
+  ## select vars
+  select(Respondent_ID, PV25_Weight,
+    tidyselect::vars_select(names(df1), starts_with("AWARE_", ignore.case = TRUE))) %>%
+  ## pivot longer
+  pivot_longer( # convert to long format 
+    names_to = "Question_a",
+    values_to = "Value_a",
+    AWARE_MP:AWARE_VR
+  ) 
+
+## create new labelling var for specific technologies
+df2.1$Technology_specific <- sub('.*_', '', df2.1$Question_a) # extract everything after the underscore into a new variable by replacing everything before the underscore with blank space.
+
+
+
+df2.1 <- df2.1 %>%
+  mutate("Value_a" = 
+  dplyr::recode(Value_a, 
+      "1" = "Yes",
+      "2" = "No",
+      "3" = "Not sure/prefer not to say",
+      "4" = "Not sure/prefer not to say"))
+
+## relabel the codes so they read as words
+df2.1 <- df2.1 %>%
+  mutate(Technology_specific = 
+           recode_technologies(Technology_specific))
+
+## Awareness plot
+df2.1 %>%
+  drop_na(Value_a) %>%
+  group_by(Technology_specific, Value_a) %>%
+  tally(wt = PV25_Weight) %>%
+  mutate(pct = n/sum(n)) %>%
+  mutate(Value_factor = 
+           case_when(Value_a == "Yes" ~ "High", 
+                     TRUE ~ "Other")) %>%
+  group_by(Technology_specific, Value_factor) %>%
+  mutate(Sum_f = sum(pct)) %>%
+  #### ggplot #####
+  ggplot(aes(y=pct, x=reorder(Technology_specific, -Sum_f), fill = Value_a)) +
+  geom_col(width = 0.7) + 
+  scale_y_continuous(name = "", label = percent) +
+  theme_minimal() + 
+  theme(panel.grid.minor = element_blank(), 
+                        legend.position = "top", legend.text = element_text(size=12), legend.title =  element_text(size = 12)) +
+  labs(title="Awareness of technology",
+       subtitle = "'Before today, had you heard of the use of AI technologies for...'") + 
+  theme(plot.title = element_text(size = 14)) +
+  scale_fill_manual(breaks = c("Yes", "Not sure/prefer not to say", "No"), 
+                                values = c(
+                               "#00A087FF",
+                               "#D5DFE8",
+                               "#E64B35FF"
+                               ),
+                    name = "Response") +
+  xlab("") +
+  geom_text(
+    aes(label = scales::percent(pct, accuracy = 1)), position = position_stack(vjust = .5), size = 3) +
+  coord_flip()
+
+```
+
+```{r}
+## Awareness x demographics of interest 
+df2.1.1 <- inner_join(df2.1, demog)
+
+# overall awareness
+df2.1.t <- df2.1 %>%
+  drop_na(Value_a) %>%
+  group_by(Technology_specific, Value_a) %>%
+  tally(wt = PV25_Weight) %>%
+  mutate(pct = n/sum(n))
+  
+df2.1.t$A_Demo <- "Total"
+df2.1.t$Q_Demo <- "Total"
+
+# awareness by demographics
+df2.1.d <- df2.1.1 %>%
+  drop_na(Value_a) %>%
+  drop_na(A_Demo) %>%
+  group_by(Technology_specific, Q_Demo, 
+           A_Demo, 
+           Value_a) %>%
+  tally(wt = PV25_Weight) %>%
+  mutate(pct = n/sum(n))
+
+df2.1.1 <- rbind(df2.1.t, df2.1.d)
+
+df2.1.1$A_Demo <- factor(df2.1.1$A_Demo,levels = demo_list)
+
+```
+
+```{r, fig.width=12, fig.height=20}
+df2.1.1 %>%
+  drop_na(A_Demo) %>%
+  ggplot(aes(y=pct, x=A_Demo)) + 
+  geom_col(aes(fill = Value_a), width = 0.7) + 
+  scale_y_continuous(name = "Percentage (%)", label = percent) +
+  theme_light() + 
+  facet_wrap(~Technology_specific) + 
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(), 
+                        legend.position = "top", legend.text = element_text(size=12), legend.title =  element_text(size = 14)) +
+  labs(title="Awareness") + 
+  theme(plot.title = element_text(size = 14)) +
+  scale_fill_manual(breaks = c("Yes", "Not sure/prefer not to say", "No"), 
+                                values = c(
+                               "#00A087FF",
+                               "#D5DFE8",
+                               "#E64B35FF"
+                               ),
+                    name = "Response") +
+  coord_flip()
+
+# awareness x age specific stats
+tab <- df2.1.1 %>%
+  filter(A_Demo == "75+ yrs") %>%
+  filter(Value_a == "Yes")
+
+# mobile phones
+# border control
+# SMC 
+
+df1 %>%
+  drop_na(AWARE_SMC) %>% # change for each use of AI interested in  
+  drop_na(CS_Age_Band) %>%
+  filter(CS_Age_Band!= 7) %>%
+  group_by(AWARE_SMC) %>%
+  tally(wt = PV25_Weight) %>%
+  mutate(pct = n/sum(n))
+```
+
+#######################################################################################################################################
+
+Experience with technology
+```{r}
+## Experience with technology
+df2.2 <- df1 %>%
+  # remove all labels
+  remove_val_labels() %>%
+  ## select vars
+  select(Respondent_ID, PV25_Weight, 
+    tidyselect::vars_select(names(df1), starts_with("EXP_", ignore.case = TRUE)),) %>%
+  ## pivot longer
+  pivot_longer( # convert to long format 
+    names_to = "Question_e",
+    values_to = "Value_e",
+    EXP_MP:EXP_VR
+  ) 
+
+## create new labelling var for specific technologies
+df2.2$Technology_specific <- sub('.*_', '', df2.2$Question_e) # extract everything after the underscore into a new variable by replacing everything before the underscore with blank space.
+
+
+df2.2 <- df2.2 %>%
+  mutate("Value_e" = 
+  dplyr::recode(Value_e, 
+      "1" = "A lot",
+      "2" = "Some",
+      "3" = "None",
+      "4" = "Not sure/prefer not to say",
+      "5" = "Not sure/prefer not to say"))
+
+## relabel the codes so they read as words
+df2.2 <- df2.2 %>%
+  mutate(Technology_specific = 
+           recode_technologies(Technology_specific))
+
+## relevel values
+df2.2$Value_e <- factor(df2.2$Value_e,levels = c(   "None",  "Not sure/prefer not to say", "Some", "A lot"))
+
+## Experience plot
+df2.2 %>%
+  drop_na(Value_e) %>%
+  group_by(Technology_specific, Value_e) %>%
+  tally(wt = PV25_Weight) %>%
+  mutate(pct = n/sum(n)) %>%
+  mutate(Value_factor = 
+           case_when(Value_e == "None"   ~ "High", 
+                     TRUE ~ "Other")) %>%
+  group_by(Technology_specific, Value_factor) %>%
+  mutate(Sum_f = sum(pct)) %>%
+  #### ggplot #####
+  ggplot(aes(y=pct, x=reorder(Technology_specific, +Sum_f), fill = Value_e)) +
+  geom_col(width = 0.7) + 
+  scale_y_continuous(name = "", label = percent) +
+  theme_minimal() + 
+  theme(
+        panel.grid.minor = element_blank(), 
+                        legend.position = "top", legend.text = element_text(size=12), legend.title =  element_text(size = 12)) +
+  labs(title="Experience with technology",
+       subtitle = "'How much personal experience have you had, if any with...'") + 
+  theme(plot.title = element_text(size = 14)) +
+  scale_fill_manual(breaks = c("A lot", "Some", "Not sure/prefer not to say", "None" ), 
+                                values = c(
+                               "#00A087FF",
+                               "#91D1C2FF",
+                               "#D5DFE8",
+                               "#E64B35FF"
+                               ),
+                    name = "Response") +
+  xlab("") +
+  geom_text(
+    aes(label = scales::percent(pct, accuracy = 1)), position = position_stack(vjust = .5), size = 3) +
+  coord_flip()
+```
+
+```{r}
+## experience x demographics of interest 
+df2.2.1 <- inner_join(df2.2, demog)
+
+# overall awareness
+df2.2.t <- df2.2 %>%
+  drop_na(Value_e) %>%
+  group_by(Technology_specific, Value_e) %>%
+  tally(wt = PV25_Weight) %>%
+  mutate(pct = n/sum(n))
+  
+df2.2.t$A_Demo <- "Total"
+df2.2.t$Q_Demo <- "Total"
+
+# awareness by demographics
+df2.2.d <- df2.2.1 %>%
+  drop_na(Value_e) %>%
+  drop_na(A_Demo) %>%
+  group_by(Technology_specific, Q_Demo, 
+           A_Demo, 
+           Value_e) %>%
+  tally(wt = PV25_Weight) %>%
+  mutate(pct = n/sum(n))
+
+df2.2.1 <- rbind(df2.2.t, df2.2.d)
+
+df2.2.1$A_Demo <- factor(df2.2.1$A_Demo,levels = demo_list)
+
+```
+
+```{r, fig.width=12, fig.height=20}
+df2.2.1 %>%
+  drop_na(A_Demo) %>%
+  ggplot(aes(y=pct, x=A_Demo)) + 
+  geom_col(aes(fill = Value_e), width = 0.7) + 
+  scale_y_continuous(name = "Percentage (%)", label = percent) +
+  theme_light() + 
+  facet_wrap(~Technology_specific) + 
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(), 
+                        legend.position = "top", legend.text = element_text(size=12), legend.title =  element_text(size = 14)) +
+  labs(title="Experience") + 
+  theme(plot.title = element_text(size = 14)) +
+  scale_fill_manual(breaks = c("A lot", "Some", "None", "Not sure/prefer not to say"), 
+                                values = c(
+                               "#00A087FF",
+                               "#91D1C2FF",
+                               "#E64B35FF",
+                               "#D5DFE8"),
+                    name = "Response") +
+  coord_flip()
+
+# experience x age specific stats 
+#MP 
+#BC
+#SMC
+#smp
+df1 %>%
+  drop_na(EXP_MP) %>% # change for each use of AI interested in  
+  drop_na(CS_Age_Band) %>%
+  filter(CS_Age_Band== 7) %>%
+  group_by(EXP_MP) %>%
+  tally(wt = PV25_Weight) %>%
+  mutate(pct = n/sum(n))
+
+
+```
+
+```{r}
+## tidy up console by removing data frames we no longer need
+rm(df2.1,
+   df2.1.1,
+   df2.1.d,
+   df2.1.t,
+   df2.2,
+   df2.2.1,
+   df2.2.d,
+   df2.2.t,
+   tab)
+```
+
+#######################################################################################################################################
+
+Overall ratings of benefit and concern
+```{r}
+### prep data
+## overall levels of benefit 
+df3.1 <- df1 %>%
+  # remove all labels
+  remove_val_labels() %>%
+  ## select vars
+  select(Respondent_ID, PV25_Weight, 
+    tidyselect::vars_select(names(df1), starts_with("BENA_", ignore.case = TRUE)),) %>%
+  ## pivot longer
+  pivot_longer( # convert to long format 
+    names_to = "Question_b",
+    values_to = "Value_b",
+    BENA_MP:BENA_VR
+  ) 
+
+## create new labelling var for specific technologies
+df3.1$Technology_specific <- sub('.*_', '', df3.1$Question_b) # extract everything after the underscore into a new variable by replacing everything before the underscore with blank space.
+
+
+
+df3.1 <- df3.1 %>%
+  mutate("Value_b" = 
+  dplyr::recode(Value_b, 
+      "1" = "Very",
+      "2" = "Somewhat",
+      "3" = "Not very",
+      "4" = "Not at all",
+      "5" = "Don't know/prefer not to say",
+      "6" = "Don't know/prefer not to say"))
+
+df3.1$Value_b <- factor(df3.1$Value_b,levels = c(  "Not at all", "Not very", "Don't know/prefer not to say", "Somewhat", "Very")) 
+
+
+## repeat for concerns
+df3.2 <- df1 %>%
+  # remove all labels
+  remove_val_labels() %>%
+  ## select vars
+  select(Respondent_ID, PV25_Weight, 
+    tidyselect::vars_select(names(df1), starts_with("CONA_", ignore.case = TRUE)),) %>%
+  ## pivot longer
+  pivot_longer( # convert to long format 
+    names_to = "Question_c",
+    values_to = "Value_c",
+    CONA_MP:CONA_VR
+  ) 
+
+## create new labelling var for specific technologies
+df3.2$Technology_specific <- sub('.*_', '', df3.2$Question_c) # extract everything after the underscore into a new variable by replacing everything before the underscore with blank space.
+
+df3.2 <- df3.2 %>%
+  mutate("Value_c" = 
+  dplyr::recode(Value_c, 
+      "1" = "Very",
+      "2" = "Somewhat",
+      "3" = "Not very",
+      "4" = "Not at all",
+      "5" = "Don't know/prefer not to say",
+      "6" = "Don't know/prefer not to say"))
+
+df3.2$Value_c <- factor(df3.2$Value_c,levels = c(  "Not at all", "Not very", "Don't know/prefer not to say", "Somewhat", "Very")) 
+
+df3 <- inner_join(df3.1, df3.2)
+
+df3 <- df3 %>%
+  mutate(Technology_specific = 
+           recode_technologies(Technology_specific))
+
+rm(df3.1, df3.2)
+```
+
+```{r}
+## bar plot of benefit levels
+df3 %>%
+  drop_na(Value_b) %>%
+  group_by(Technology_specific, Value_b) %>%
+  tally(wt = PV25_Weight) %>%
+  mutate(pct = n/sum(n)) %>%
+  mutate(Value_factor = 
+           case_when(Value_b == "Very" | Value_b == "Somewhat" ~ "High", 
+                     TRUE ~ "Other")) %>%
+  group_by(Technology_specific, Value_factor) %>%
+  mutate(Sum_f = sum(pct)) %>%
+  #### ggplot #####
+  ggplot(aes(y=pct, x=reorder(Technology_specific, -Sum_f), fill = Value_b)) +
+  geom_col(width = 0.7) + 
+  scale_y_continuous(name = "", label = percent) +
+  theme_minimal() + 
+  theme(#panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(), 
+                        legend.position = "top", legend.text = element_text(size=12), legend.title =  element_text(size = 12)) +
+  labs(title="Technology as beneficial",
+       subtitle = "'To what extent do you think that the use of this technology will be beneficial?'") + 
+  theme(plot.title = element_text(size = 14)) +
+  scale_fill_manual(breaks = c("Very", "Somewhat", "Don't know/prefer not to say", "Not very", "Not at all" ), 
+                                values = c(
+                               "#00A087FF",
+                               "#91D1C2FF",
+                               "#D5DFE8",
+                               "#F39B7FFF",
+                               "#E64B35FF"
+                               ),
+                    name = "Response") +
+  xlab("") +
+  geom_text(
+    aes(label = scales::percent(pct, accuracy = 1)), position = position_stack(vjust = .5), size = 3) +
+  coord_flip()
+```
+```{r}
+## bar plot of concerns
+df3 %>%
+  drop_na(Value_c) %>%
+  group_by(Technology_specific, Value_c) %>%
+  tally(wt = PV25_Weight) %>%
+  mutate(pct = n/sum(n)) %>%
+  mutate(Value_factor = 
+           case_when(Value_c == "Very" | Value_c == "Somewhat" ~ "High", 
+                     TRUE ~ "Other")) %>%
+  group_by(Technology_specific, Value_factor) %>%
+  mutate(Sum_f = sum(pct)) %>%
+  #### ggplot #####
+  ggplot(aes(y=pct, x=reorder(Technology_specific, -Sum_f), fill = Value_c)) +
+  geom_col(width = 0.7) + 
+  scale_y_continuous(name = "", label = percent) +
+  theme_minimal() + 
+  theme(#panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(), 
+                        legend.position = "top", legend.text = element_text(size=12), legend.title =  element_text(size = 12)) +
+  labs(title="Technology as concerning",
+       subtitle = "'To what extent are you concerned about the use of...'") + 
+  theme(plot.title = element_text(size = 14)) +
+  scale_fill_manual(breaks = c("Very", "Somewhat", "Don't know/prefer not to say", "Not very", "Not at all" ), 
+                                values = c(
+                                  "#E64B35FF",
+                                  "#F39B7FFF",
+                                  "#D5DFE8",
+                               "#91D1C2FF",
+                               "#00A087FF"
+                               ),
+                    name = "Response") +
+  xlab("") +
+  geom_text(
+    aes(label = scales::percent(pct, accuracy = 1)), position = position_stack(vjust = .5), size = 3) +
+  coord_flip()
+```
+
+
+```{r}
+rm(df3)
+```
+
+####### Overall - specific benefits and concerns for each technology ############### 
+```{r}
+## loop through all technologies 
+# overall sample specific benefits and concerns 
+df5 <- df1 %>%
+  select(Respondent_ID, PV25_Weight,
+         tidyselect::vars_select(names(df1), starts_with("BENB_", ignore.case = TRUE)),) %>%
+  select(!BENB_MP_3) %>%
+  select(!BENB_BC_7) %>%
+  select(!BENB_PS_6) %>% 
+  select(!BENB_WEL_7) %>% 
+  select(!BENB_JOB_7) %>% 
+  select(!BENB_CAN_6) %>% 
+  select(!BENB_LOAN_7) %>% 
+  select(!BENB_SMC_4) %>% 
+  select(!BENB_SMP_5) %>% 
+  select(!BENB_VASS_6) %>% 
+  select(!BENB_VAH_7) %>% 
+  select(!BENB_RVC_4) %>% 
+  select(!BENB_RCA_5) %>% 
+  select(!BENB_DC_7) %>% 
+  select(!BENB_AW_7) %>% 
+  select(!BENB_CCR_5) %>%
+  select(!BENB_VR_5) %>%
+  pivot_longer( # convert to long format 
+    names_to = "Question",
+    values_to = "Value",
+    BENB_MP01:BENB_VR09)
+
+# broad grouping variable
+df5 <- df5 %>%
+  mutate(Technology_broad = 
+           case_when(
+                     str_detect(Question, "_MP") | str_detect(Question,"_BC") | str_detect(Question,"_PS") ~ "Face recognition",
+                     str_detect(Question, "_WEL") | str_detect(Question,"_JOB") | str_detect(Question,"_CAN") | str_detect(Question,"_LOAN") ~ "AI risk or eligibility",
+                     str_detect(Question, "_SMC") | str_detect(Question,"_SMP") ~ "Social media targeting",
+                     str_detect(Question, "_VASS") | str_detect(Question,"_VAH") ~ "Virtual assistants",
+                     str_detect(Question, "_RVC") | str_detect(Question,"_RCA") | str_detect(Question,"_DC") | str_detect(Question,"_AW") ~ "Robotics",
+                     str_detect(Question, "_CCR") | str_detect(Question,"_VR") ~ "Simulations",
+           ))
+
+## create new labelling var for specific technologies
+df5$Technology_specific <- sub('.*_', '', df5$Question) # extract everything after the underscore into a new variable 
+
+df5$Technology_specific <- str_sub(df5$Technology_specific, end = -3) # remove last 2 characters from string 
+
+df5 <- df5 %>%
+  mutate(Technology_specific = 
+           recode_technologies(Technology_specific))
+```
+
+```{r}
+df5.b <- df1 %>%
+  select(Respondent_ID, PV25_Weight,
+         tidyselect::vars_select(names(df1), starts_with("CONB_", ignore.case = TRUE)),) %>%
+ select(!CONB_MP_7) %>%
+  select(!CONB_BC_11) %>%
+  select(!CONB_PS_10) %>% 
+  select(!CONB_WEL_11) %>% 
+  select(!CONB_JOB_11) %>% 
+  select(!CONB_CAN_9) %>% 
+  select(!CONB_LOAN_12) %>% 
+  select(!CONB_SMC_5) %>% 
+  select(!CONB_SMP_6) %>% 
+  select(!CONB_VASS_7) %>% 
+  select(!CONB_VAH_11) %>% 
+  select(!CONB_RVC_8) %>% 
+  select(!CONB_RCA_9) %>% 
+  select(!CONB_DC_11) %>% 
+  select(!CONB_AW_10) %>% 
+  select(!CONB_CCR_5) %>%
+  select(!CONB_VR_6) %>%
+  pivot_longer( # convert to long format 
+    names_to = "Question",
+    values_to = "Value",
+    CONB_MP01:CONB_VR12)
+
+# broad grouping variable
+df5.b <- df5.b %>%
+  mutate(Technology_broad = 
+           case_when(
+                     str_detect(Question, "_MP") | str_detect(Question,"_BC") | str_detect(Question,"_PS") ~ "Face recognition",
+                     str_detect(Question, "_WEL") | str_detect(Question,"_JOB") | str_detect(Question,"_CAN") | str_detect(Question,"_LOAN") ~ "AI risk or eligibility",
+                     str_detect(Question, "_SMC") | str_detect(Question,"_SMP") ~ "Social media targeting",
+                     str_detect(Question, "_VASS") | str_detect(Question,"_VAH") ~ "Virtual assistants",
+                     str_detect(Question, "_RVC") | str_detect(Question,"_RCA") | str_detect(Question,"_DC") | str_detect(Question,"_AW") ~ "Robotics",
+                     str_detect(Question, "_CCR") | str_detect(Question,"_VR") ~ "Simulations",
+           ))
+
+## create new labelling var for specific technologies
+df5.b$Technology_specific <- sub('.*_', '', df5.b$Question) # extract everything after the underscore into a new variable 
+
+df5.b$Technology_specific <- str_sub(df5.b$Technology_specific, end = -3) # remove last 2 characters from string 
+
+df5.b <- df5.b %>%
+  mutate(Technology_specific = 
+           recode_technologies(Technology_specific))
+```
+
+```{r}
+## checking specific stats
+df1 %>%
+  filter(CONA_VASS == 1 | CONA_VASS == 2) %>%
+  group_by(CONB_VASS06) %>%
+  tally(wt = PV25_Weight) %>%
+  mutate(pct = n/sum(n))
+```
+
+
+```{r}
+## specific benefits - risk and eligibility
+df5 %>%
+  filter(Technology_broad == "AI risk or eligibility") %>%
+  drop_na(Value) %>%
+  group_by(Technology_specific, Question, Value) %>%
+  tally(wt = PV25_Weight) %>%
+  mutate(pct = n/sum(n)) %>%
+  filter(Value == 1) %>%
+  #### select top three benefits of technology type only #### 
+  group_by(Technology_specific) %>%
+  arrange(desc(pct))
+```
+
+```{r}
+## specific concerns - risk and eligibility
+df5.b %>%
+  filter(Technology_broad == "AI risk or eligibility") %>%
+  drop_na(Value) %>%
+  group_by(Technology_specific, Question, Value) %>%
+  tally(wt = PV25_Weight) %>%
+  mutate(pct = n/sum(n)) %>%
+  filter(Value == 1) %>%
+  #### select top three benefits of technology type only #### 
+  group_by(Technology_specific) %>%
+  arrange(desc(pct))
+```
+
+```{r}
+## specific benefits - Face recognitio
+df5 %>%
+  filter(Technology_broad == "Face recognition") %>%
+  drop_na(Value) %>%
+  group_by(Technology_specific, Question, Value) %>%
+  tally(wt = PV25_Weight) %>%
+  mutate(pct = n/sum(n)) %>%
+  filter(Value == 1) %>%
+  #### select top three benefits of technology type only #### 
+  group_by(Technology_specific) %>%
+  arrange(desc(pct))
+```
+
+```{r}
+## specific concerns - Face recognitio
+df5.b %>%
+  filter(Technology_broad == "Face recognition") %>%
+  drop_na(Value) %>%
+  group_by(Technology_specific, Question, Value) %>%
+  tally(wt = PV25_Weight) %>%
+  mutate(pct = n/sum(n)) %>%
+  filter(Value == 1) %>%
+  #### select top three benefits of technology type only #### 
+  group_by(Technology_specific) %>%
+  arrange(desc(pct)) 
+```
+
+```{r}
+## specific benefits - Robotics
+df5 %>%
+  filter(Technology_broad == "Robotics") %>%
+  drop_na(Value) %>%
+  group_by(Technology_specific, Question, Value) %>%
+  tally(wt = PV25_Weight) %>%
+  mutate(pct = n/sum(n)) %>%
+  filter(Value == 1) %>%
+  #### select top three benefits of technology type only #### 
+  group_by(Technology_specific) %>%
+  arrange(desc(pct))
+```
+
+```{r}
+## specific concerns - Robotics
+df5.b %>%
+  filter(Technology_broad == "Robotics") %>%
+  drop_na(Value) %>%
+  group_by(Technology_specific, Question, Value) %>%
+  tally(wt = PV25_Weight) %>%
+  mutate(pct = n/sum(n)) %>%
+  filter(Value == 1) %>%
+  #### select top three benefits of technology type only #### 
+  group_by(Technology_specific) %>%
+  arrange(desc(pct))
+```
+
+```{r}
+## specific benefits - Virtual assistants
+df5 %>%
+  filter(Technology_broad == "Virtual assistants") %>%
+  drop_na(Value) %>%
+  group_by(Technology_specific, Question, Value) %>%
+  tally(wt = PV25_Weight) %>%
+  mutate(pct = n/sum(n)) %>%
+  filter(Value == 1) %>%
+  #### select top three benefits of technology type only #### 
+  group_by(Technology_specific) %>%
+  arrange(desc(pct))
+```
+
+```{r}
+## specific concerns - Virtual assistants
+df5.b %>%
+  filter(Technology_broad == "Virtual assistants") %>%
+  drop_na(Value) %>%
+  group_by(Technology_specific, Question, Value) %>%
+  tally(wt = PV25_Weight) %>%
+  mutate(pct = n/sum(n)) %>%
+  filter(Value == 1) %>%
+  #### select top three benefits of technology type only #### 
+  group_by(Technology_specific) %>%
+  arrange(desc(pct))
+```
+
+```{r}
+## specific benefits - Social media targeting
+df5 %>%
+  filter(Technology_broad == "Social media targeting") %>%
+  drop_na(Value) %>%
+  group_by(Technology_specific, Question, Value) %>%
+  tally(wt = PV25_Weight) %>%
+  mutate(pct = n/sum(n)) %>%
+  filter(Value == 1) %>%
+  #### select top three benefits of technology type only #### 
+  group_by(Technology_specific) %>%
+  arrange(desc(pct))
+```
+
+```{r}
+## specific concerns - Social media targeting
+df5.b %>%
+  filter(Technology_broad == "Social media targeting") %>%
+  drop_na(Value) %>%
+  group_by(Technology_specific, Question, Value) %>%
+  tally(wt = PV25_Weight) %>%
+  mutate(pct = n/sum(n)) %>%
+  filter(Value == 1) %>%
+  #### select top three benefits of technology type only #### 
+  group_by(Technology_specific) %>%
+  arrange(desc(pct))
+```
+
+
+```{r}
+## specific benefits - Simulations
+df5 %>%
+  filter(Technology_broad == "Simulations") %>%
+  drop_na(Value) %>%
+  group_by(Technology_specific, Question, Value) %>%
+  tally(wt = PV25_Weight) %>%
+  mutate(pct = n/sum(n)) %>%
+  filter(Value == 1) %>%
+  #### select top three benefits of technology type only #### 
+  group_by(Technology_specific) %>%
+  arrange(desc(pct))
+```
+
+```{r}
+## specific concerns - Simulations
+df5.b %>%
+  filter(Technology_broad == "Simulations") %>%
+  drop_na(Value) %>%
+  group_by(Technology_specific, Question, Value) %>%
+  tally(wt = PV25_Weight) %>%
+  mutate(pct = n/sum(n)) %>%
+  filter(Value == 1) %>%
+  #### select top three benefits of technology type only #### 
+  group_by(Technology_specific) %>%
+  arrange(desc(pct))
+```
+
+####### Chi-square testing of specific benefits and concerns #######
+```{r}
+## for this analysis, word documents with chi-square test tables will be produced and saved to your working directory. 
+df2 <- df1 %>%
+  select(RS_Ethnicity_Combined,
+         DR_Socio_Eco,
+         RS_Sex,
+         CS_Age_Band,
+         RS_EducationLevel,
+         AWARE_VR,
+         PV25_Weight,
+         tidyselect::vars_select(names(df1), starts_with("BENB_", ignore.case = TRUE)),
+         tidyselect::vars_select(names(df1), starts_with("CONB_", ignore.case = TRUE))) %>%
+  mutate(RS_Ethnicity_Combined = as.factor(RS_Ethnicity_Combined)) %>%
+  mutate(DR_Socio_Eco = as.factor(DR_Socio_Eco)) %>%
+  mutate(RS_Sex = as.factor(RS_Sex)) %>%
+  mutate(CS_Age_Band = as.factor(CS_Age_Band)) %>%
+  mutate(RS_EducationLevel = as.factor(RS_EducationLevel)) %>%
+  mutate(AWARE_VR = as.factor(AWARE_VR))
+
+df2 <- df2 %>%
+  select(!BENB_MP_3) %>%
+  select(!BENB_BC_7) %>%
+  select(!BENB_PS_6) %>% 
+  select(!BENB_WEL_7) %>% 
+  select(!BENB_JOB_7) %>% 
+  select(!BENB_CAN_6) %>% 
+  select(!BENB_LOAN_7) %>% 
+  select(!BENB_SMC_4) %>% 
+  select(!BENB_SMP_5) %>% 
+  select(!BENB_VASS_6) %>% 
+  select(!BENB_VAH_7) %>% 
+  select(!BENB_RVC_4) %>% 
+  select(!BENB_RCA_5) %>% 
+  select(!BENB_DC_7) %>% 
+  select(!BENB_AW_7) %>% 
+  select(!BENB_CCR_5) %>%
+  select(!BENB_VR_5)
+
+df2 <- df2 %>%
+  select(!CONB_MP_7) %>%
+  select(!CONB_BC_11) %>%
+  select(!CONB_PS_10) %>% 
+  select(!CONB_WEL_11) %>% 
+  select(!CONB_JOB_11) %>% 
+  select(!CONB_CAN_9) %>% 
+  select(!CONB_LOAN_12) %>% 
+  select(!CONB_SMC_5) %>% 
+  select(!CONB_SMP_6) %>% 
+  select(!CONB_VASS_7) %>% 
+  select(!CONB_VAH_11) %>% 
+  select(!CONB_RVC_8) %>% 
+  select(!CONB_RCA_9) %>% 
+  select(!CONB_DC_11) %>% 
+  select(!CONB_AW_10) %>% 
+  select(!CONB_CCR_5) %>%
+  select(!CONB_VR_6)
+
+### column numbers to reference in code chunk below! 
+
+colnames(df2)
+
+```
+
+```{r}
+## SES 
+for (col in names(df2)[8:18]) { ## change number in this line for columns you are interested in (refer to codebook)
+  sink(file = paste(col, "SES", sep = "_", ".doc"))
+  ct_ <- crosstab(df2[[col]], 
+                  df2[["DR_Socio_Eco"]], 
+                  weight = df2[["PV25_Weight"]], 
+                  format = "SPSS", 
+                  prop.c = TRUE, 
+                  plot = FALSE,
+                  chisq = TRUE, fisher = TRUE)
+  ct_[["RowData"]] <- col
+  ct_[["ColData"]] <- "DR_Socio_Eco"
+  print(ct_)
+  sink()
+}
+
+
+## eth 
+ for (col in names(df2)[8:18]) { ## change number in this line for columns you are interested in (refer to codebook)
+  sink(file = paste(col, "ETH", sep = "_", ".doc"))
+  ct_ <- crosstab(df2[[col]], 
+                  df2[["RS_Ethnicity_Combined"]], 
+                  weight = df2[["PV25_Weight"]], 
+                  format = "SPSS", 
+                  prop.c = TRUE, 
+                  plot = FALSE,
+                  chisq = TRUE, fisher = TRUE)
+  ct_[["RowData"]] <- col
+  ct_[["ColData"]] <- "RS_Ethnicity_Combined"
+  print(ct_)
+  sink()
+}
+
+
+## sex 
+for (col in names(df2)[8:18]) { ## change number in this line for columns you are interested in (refer to codebook)
+  sink(file = paste(col, "SEX", sep = "_", ".doc"))
+  ct_ <- crosstab(df2[[col]], 
+                  df2[["RS_Sex"]], 
+                  weight = df2[["PV25_Weight"]], 
+                  format = "SPSS", 
+                  prop.c = TRUE, 
+                  plot = FALSE,
+                  chisq = TRUE, fisher = TRUE)
+  ct_[["RowData"]] <- col
+  ct_[["ColData"]] <- "RS_Sex"
+  print(ct_)
+  sink()
+}
+
+## age 
+for (col in names(df2)[8:18]) { ## change number in this line for columns you are interested in (refer to codebook)
+  sink(file = paste(col, "AGE", sep = "_", ".doc"))
+  ct_ <- crosstab(df2[[col]], 
+                  df2[["CS_Age_Band"]], 
+                  weight = df2[["PV25_Weight"]], 
+                  format = "SPSS", 
+                  prop.c = TRUE, 
+                  plot = FALSE,
+                  chisq = TRUE, fisher = TRUE)
+  ct_[["RowData"]] <- col
+  ct_[["ColData"]] <- "CS_Age_Band"
+  print(ct_)
+  sink()
+}
+
+
+## education 
+for (col in names(df2)[8:18]) { ## change number in this line for columns you are interested in (refer to codebook)
+  sink(file = paste(col, "EDU", sep = "_", ".doc"))
+  ct_ <- crosstab(df2[[col]], 
+                  df2[["RS_EducationLevel"]], 
+                  weight = df2[["PV25_Weight"]], 
+                  format = "SPSS", 
+                  prop.c = TRUE, 
+                  plot = FALSE,
+                  chisq = TRUE, fisher = TRUE)
+  ct_[["RowData"]] <- col
+  ct_[["ColData"]] <- "RS_EducationLevel"
+  print(ct_)
+  sink()
+}
+```
+
+```{r}
+rm(df2, df5, df5.b)
+```
+
+
+######### Governance, comfort, explainability ###############
+```{r}
+# Explainability vs accuracy 
+df6 <- df1 %>%
+  select(Respondent_ID, PV25_Weight, CS_Age_Band, 
+         EXPLAINB)
+
+# prep data
+df6 <- df6 %>%
+  mutate("EXPLAINB" = 
+  dplyr::recode(EXPLAINB, 
+      "1" = "Accuracy is more important than providing an explanation",
+      "2" = "Sometimes explanation should be given, even if that makes the AI decision less accurate",
+      "3" = "An explanation should always be given, even if that makes all AI decisions less accurate",
+      "4" = "Humans, not computers, should always make the decisions and be able to explain them to the people affected",
+      "5" = "Don't know/prefer not to say",
+      "6" = "Don't know/prefer not to say"))
+
+## create total summary table
+df6.t <- df6 %>%
+  drop_na(EXPLAINB) %>%
+  group_by(EXPLAINB) %>%
+  tally(wt = PV25_Weight) %>%
+  mutate(pct = n/sum(n))
+
+df6.t$CS_Age_Band <- "Total"
+## create a summary table by age
+df6.a <- df6 %>%
+  drop_na(EXPLAINB) %>%
+  group_by(CS_Age_Band, 
+           EXPLAINB) %>%
+  tally(wt = PV25_Weight) %>%
+  mutate(pct = n/sum(n))
+
+## merge tables
+df6.all <- rbind(df6.t, df6.a)
+
+## relevel the data - explain b
+df6.all$EXPLAINB <- factor(df6.all$EXPLAINB,levels = c( "Don't know/prefer not to say",  
+                                                        "Humans, not computers, should always make the decisions and be able to explain them to the people affected", 
+                                                        "An explanation should always be given, even if that makes all AI decisions less accurate",
+                                                        "Sometimes explanation should be given, even if that makes the AI decision less accurate",
+                                                        "Accuracy is more important than providing an explanation"))
+## relvel the data - demographics 
+df6.all <- df6.all %>%
+  mutate(CS_Age_Band =
+           recode(CS_Age_Band, 
+      "1" = "18-24 yrs",
+      "2" = "25-34 yrs",
+      "3" = "35-44 yrs",
+      "4" = "45-54 yrs",
+      "5" = "55-64 yrs", 
+      "6" = "65-74 yrs",
+      "7" = "75+ yrs")) 
+
+df6.all$CS_Age_Band <- factor(df6.all$CS_Age_Band,levels = c("75+ yrs",
+                                                             "65-74 yrs",
+                                                             "55-64 yrs",
+                                                             "45-54 yrs",
+                                                             "35-44 yrs",
+                                                             "25-34 yrs",
+                                                             "18-24 yrs",
+                                                             "Total")) 
+
+## overall plot 
+df6.all %>%
+  ggplot(aes(y=pct, x=CS_Age_Band, fill = EXPLAINB)) + 
+  geom_col(width = 0.7) + 
+  scale_y_continuous(name = "", label = percent) +
+  theme_minimal() + 
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(), 
+                        legend.position = "top", legend.text = element_text(size=8), legend.title =  element_text(size = 10)) +
+  labs(title="Explainability vs accuracy",
+       subtitle = "'Overall, which statement do you feel best reflects your personal opinion?'") + 
+  theme(plot.title = element_text(size = 14)) +
+ # theme(axis.line.x = element_line(arrow = grid::arrow(length = unit(0.3, "cm"), 
+  #                                                     ends = "both"))) +
+  scale_fill_manual(breaks = c("Accuracy is more important than providing an explanation", 
+                               "Sometimes explanation should be given, even if that makes the AI decision less accurate", 
+                               "An explanation should always be given, even if that makes all AI decisions less accurate", 
+                               "Humans, not computers, should always make the decisions and be able to explain them to the people affected", 
+                               "Don't know/prefer not to say"), 
+                                values = c(
+                               "#FF6A58",
+                               "#FFD2CD",
+                               "#D5DFE8",
+                               "#7A99B6",
+                               "grey"),
+                    name = "",
+                    labels = function(x) str_wrap(x, width = 20)) +
+  xlab("") + 
+  geom_text(
+    aes(label = scales::percent(pct, accuracy = 1)), position = position_stack(vjust = .5), size = 3) +
+  coord_flip() 
+```
+```{r}
+rm(df6, df6.a, df6.all, df6.t)
+```
+
+
+Who should govern AI? 
+```{r}
+df7 <- df1 %>%
+  select(Respondent_ID, PV25_Weight, CS_Age_Band,
+         GOVERNANCE01:GOVERNANCE12
+         ) %>%
+  pivot_longer(
+    names_to = "Question",
+    values_to = "Value",
+    GOVERNANCE01:GOVERNANCE12
+  )
+
+df7 <- df7 %>%
+  mutate("Question" = 
+  dplyr::recode(Question, 
+      "GOVERNANCE01" = "The companies developing the AI technology",
+      "GOVERNANCE02" = "Scientists and researchers working in universities or research institutions",
+      "GOVERNANCE03" = "The Government",
+      "GOVERNANCE04" = "An independent regulator",
+      "GOVERNANCE05" = "International standards bodies",
+      "GOVERNANCE06" = "An independent oversight committee with citizen involvement",
+      "GOVERNANCE07" = "The people using the AI (e.g. companies, public services)",
+      "GOVERNANCE08" = "Other (please specify)",
+      "GOVERNANCE09" = "No one should be responsible",
+      "GOVERNANCE10" = "Don't know/prefer not to say",
+      "GOVERNANCE11" = "Don't know/prefer not to say",
+      "GOVERNANCE12" = "All of the above")) 
+
+# overall preference
+df7 %>%
+  drop_na(Value) %>%
+  group_by(Question, Value) %>%
+  tally(wt = PV25_Weight) %>%
+  mutate(pct = n/sum(n)) %>%
+  filter(Value == 1) %>%
+  filter(pct > 0.004) %>%
+  ggplot(aes(y=pct, x=reorder(Question, -pct))) + 
+  geom_col(fill = "#FF6A58") + 
+    scale_y_continuous(name = "", label = percent) +
+    geom_text(aes(label = scales::percent(pct, accuracy = 1)), vjust = -0.5) +
+    theme_minimal() + 
+    theme(axis.text.x = element_text(angle=45, hjust=1)) + 
+    coord_cartesian(ylim=c(0, 1))   +
+    ggtitle("AI governance",
+            subtitle = "Who do you think should be most responsible for ensuring AI is used safely? You can only select up to two options.") +
+  scale_x_discrete(labels = function(x) str_wrap(x, width = 25)) +
+    xlab(" ") 
+```
+
+
+
+```{r}
+# governance by age
+df7 <- df7 %>%
+  mutate(CS_Age_Band =
+           recode(CS_Age_Band, 
+      "1" = "18-24 yrs",
+      "2" = "25-34 yrs",
+      "3" = "35-44 yrs",
+      "4" = "45-54 yrs",
+      "5" = "55-64 yrs", 
+      "6" = "65-74 yrs",
+      "7" = "75+ yrs")) 
+
+df7 %>%
+  drop_na(Value) %>%
+  group_by(CS_Age_Band, Question, Value) %>%
+  tally(wt = PV25_Weight) %>%
+  mutate(pct = n/sum(n)) %>%
+  filter(Value == 1) %>%
+  filter(Question != "Other (please specify)") %>%
+  ggplot(aes(y=pct, x=reorder(Question, +pct))) + 
+  geom_col(fill = "#FF6A58") + 
+    scale_y_continuous(name = "", label = percent) +
+    geom_text(aes(label = scales::percent(pct, accuracy = 1)), position = position_dodge(width = .9), size = 3) +
+    theme_minimal() + 
+    theme(
+        axis.text.x = element_text(angle=45, hjust=1)) + 
+    coord_cartesian(ylim=c(0, 1))   +
+    facet_grid(~CS_Age_Band) + 
+    ggtitle("AI governance",
+            subtitle = "Who do you think should be most responsible for ensuring AI is used safely? You can only select up to two options.") +
+  scale_x_discrete(labels = function(x) str_wrap(x, width = 25)) +
+    xlab(" ") +
+  coord_flip()
+
+df7 %>%
+  drop_na(Value) %>%
+  group_by(CS_Age_Band, Question, Value) %>%
+  tally(wt = PV25_Weight) %>%
+  mutate(pct = n/sum(n)) %>%
+  filter(Question == "The companies developing the AI technology") %>%
+  group_by(CS_Age_Band) %>%
+  mutate(total = sum(n))
+```
+```{r}
+rm(df7)
+```
+
+comfort with AI 
+```{r, echo=FALSE, warning=FALSE}
+df8 <- df1 %>%
+  select(Respondent_ID, PV25_Weight, CS_Age_Band,
+         MORECOMF01:MORECOMF12
+         ) %>%
+  pivot_longer(
+    names_to = "Question",
+    values_to = "Value",
+    MORECOMF01:MORECOMF12
+  )
+
+df8 <- df8 %>%
+  mutate("Question" = 
+  dplyr::recode(Question, 
+      "MORECOMF01" = "Explanations of how AI technologies work and make decisions",
+      "MORECOMF02" = "More human involvement and control in AI decisions",
+      "MORECOMF03" = "Clear procedures in place for appealing to a human specialist against a decision made by AI",
+      "MORECOMF04" = "The AI has been deemed acceptable by a government regulator",
+      "MORECOMF05" = "Laws and regulations",
+      "MORECOMF06" = "People’s personal information is kept safe and secure",
+      "MORECOMF07" = "Regular evaluation to ensure no discrimination against particular groups of people",
+      "MORECOMF08" = "Something else (please specify)",
+      "MORECOMF09" = "None of these",
+      "MORECOMF10" = "Nothing",
+      "MORECOMF11" = "Don't know/prefer not to say",
+      "MORECOMF12" = "Don't know/prefer not to say")) 
+
+df8 %>%
+  drop_na(Value) %>%
+  group_by(Question, Value) %>%
+  tally(wt = PV25_Weight) %>%
+  mutate(pct = n/sum(n)) %>%
+  filter(Value == 1) %>%
+  ggplot(aes(y=pct, x=reorder(Question, -pct))) + 
+  geom_col(fill = "#FF6A58") + 
+    scale_y_continuous(name = "", label = percent) +
+    geom_text(aes(label = scales::percent(pct, accuracy = 1)), vjust = -0.5) +
+    theme_minimal() + 
+    theme(
+        axis.text.x = element_text(angle=45, hjust=1)) + 
+    coord_cartesian(ylim=c(0, 1))   +
+    ggtitle("Comfort with AI",
+            subtitle = "'Which of the following, if any, would make you more comfortable with AI technologies being used? Please select all that apply'") +
+  scale_x_discrete(labels = function(x) str_wrap(x, width = 25)) +
+    xlab(" ") 
+```
+```{r}
+rm(df8)
+```
+
+
+Who should develop AI? Cancer risk detection
+```{r}
+dev.df <- df1 %>%
+  select(Respondent_ID, PV25_Weight, 
+         RS_Ethnicity_Combined,
+         CS_Age_Band,
+         RS_Sex,
+         RS_EducationLevel,
+         DR_Socio_Eco,
+         DEV_CAN_1:DEV_CAN_4
+  ) %>%
+  remove_val_labels() %>%
+  pivot_longer(names_to = "Question",
+               values_to = "Value",
+                DEV_CAN_1:DEV_CAN_4)
+
+dev.df <- dev.df %>%
+  mutate("Value" = 
+  dplyr::recode(Value, 
+      "1" = "Very",
+      "2" = "Somewhat",
+      "3" = "Not very",
+      "4" = "Not at all",
+      "5" = "Don't know/prefer not to say",
+      "6" = "Don't know/prefer not to say"))
+
+dev.df <- dev.df %>%
+  mutate("Question" = 
+  dplyr::recode(Question, 
+      "DEV_CAN_1" = "Private companies",
+      "DEV_CAN_2" = "Not fo profit organisations",
+      "DEV_CAN_3" = "A governmental body",
+      "DEV_CAN_4" = "Universities/academic researchers"))
+
+dev.df$Value <- factor(dev.df$Value,levels = c("Don't know/prefer not to say",
+                                               "Not at all",
+                                               "Not very",
+                                               "Somewhat",
+                                               "Very"
+                                               ))
+
+dev.df %>%
+  drop_na(Value) %>%
+  group_by(Question, Value) %>%
+  tally(wt = PV25_Weight) %>%
+  mutate(pct = n/sum(n)) %>%
+  mutate(Value_factor = 
+           case_when(Value == "Very" | Value == "Somewhat" ~ "High", 
+                     TRUE ~ "Other")) %>%
+  group_by(Question, Value_factor) %>%
+  mutate(Sum_f = sum(pct)) %>%
+  #### ggplot #####
+  ggplot(aes(y=pct, x=reorder(Question, -Sum_f), fill = Value)) +
+  geom_col(width = 0.7) + 
+  scale_y_continuous(name = "", label = percent) +
+  theme_minimal() + 
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(), 
+                        legend.position = "top", legend.text = element_text(size=12), legend.title =  element_text(size = 12)) +
+  labs(title="Cancer risk technology development",
+       subtitle = "'How concerned do you feel, if at all, about each of them producing AI technologies that predict the risk of developing cancer?'") + 
+  theme(plot.title = element_text(size = 14)) +
+  scale_fill_manual(breaks = c("Very", "Somewhat", "Not very", "Not at all", "Don't know/prefer not to say"), 
+                                values = c(
+                                  "#E64B35FF",
+                                  "#F39B7FFF",
+                                  "#91D1C2FF",
+                               "#00A087FF",
+                               "#D5DFE8"),
+                    name = "Response") +
+  xlab("") +
+  geom_text(
+    aes(label = scales::percent(pct, accuracy = 1)), position = position_stack(vjust = .5), size = 3) +
+  coord_flip()
+```
+
+Who should develop AI? Welfar eligiblity
+```{r}
+dev.df.1 <- df1 %>%
+  select(Respondent_ID, PV25_Weight, 
+         RS_Ethnicity_Combined,
+         CS_Age_Band,
+         RS_Sex,
+         RS_EducationLevel,
+         DR_Socio_Eco,
+         DEV_WELFARE_1:DEV_WELFARE_4
+  ) %>%
+  remove_val_labels() %>%
+  pivot_longer(names_to = "Question",
+               values_to = "Value",
+                DEV_WELFARE_1:DEV_WELFARE_4)
+
+dev.df.1 <- dev.df.1 %>%
+  mutate("Value" = 
+  dplyr::recode(Value, 
+      "1" = "Very",
+      "2" = "Somewhat",
+      "3" = "Not very",
+      "4" = "Not at all",
+      "5" = "Don't know/prefer not to say",
+      "6" = "Don't know/prefer not to say"))
+
+dev.df.1 <- dev.df.1 %>%
+  mutate("Question" = 
+  dplyr::recode(Question, 
+      "DEV_WELFARE_1" = "Private companies",
+      "DEV_WELFARE_2" = "Not fo profit organisations",
+      "DEV_WELFARE_3" = "A governmental body",
+      "DEV_WELFARE_4" = "Universities/academic researchers"))
+
+dev.df.1$Value <- factor(dev.df.1$Value,levels = c("Don't know/prefer not to say",
+                                               "Not at all",
+                                               "Not very",
+                                               
+                                               "Somewhat",
+                                               "Very"
+                                               ))
+```
+
+```{r}
+dev.df.1 %>%
+  drop_na(Value) %>%
+  group_by(Question, Value) %>%
+  tally(wt = PV25_Weight) %>%
+  mutate(pct = n/sum(n)) %>%
+  mutate(Value_factor = 
+           case_when(Value == "Very" | Value == "Somewhat" ~ "High", 
+                     TRUE ~ "Other")) %>%
+  group_by(Question, Value_factor) %>%
+  mutate(Sum_f = sum(pct)) %>%
+  #### ggplot #####
+  ggplot(aes(y=pct, x=reorder(Question, -Sum_f), fill = Value)) +
+  geom_col(width = 0.7) + 
+  scale_y_continuous(name = "", label = percent) +
+  theme_minimal() + 
+  theme(#panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+                        legend.position = "top", legend.text = element_text(size=8), legend.title =  element_text(size = 12)) +
+  labs(title="Welfare eligibility technology development",
+       subtitle = "'How concerned do you feel, if at all, about each of them producing new computer technologies for assessing eligibility for welfare benefits?'") + 
+  theme(plot.title = element_text(size = 14)) +
+  scale_fill_manual(breaks = c("Very", "Somewhat", "Not very", "Not at all", "Don't know/prefer not to say"), 
+                                values = c(
+                                  "#E64B35FF",
+                                  "#F39B7FFF",
+                                  "#91D1C2FF",
+                               "#00A087FF",
+                               "#D5DFE8"),
+                    name = "Response") +
+  xlab("") +
+  geom_text(
+    aes(label = scales::percent(pct, accuracy = 1)), position = position_stack(vjust = .5), size = 3) +
+  coord_flip(clip= "off")
+```
+
