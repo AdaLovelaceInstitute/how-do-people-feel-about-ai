@@ -1,5 +1,5 @@
 ---
-title: "Public Attitudes_final script"
+title: "Descriptive analysis"
 output:
   word_document: default
   html_document: default
