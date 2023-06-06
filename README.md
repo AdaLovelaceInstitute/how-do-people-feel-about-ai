@@ -4,7 +4,7 @@ Survey results of attitudes towards various uses of AI (Published June 2023, fie
 This repository contains:
 - The report (.pdf)
 - The raw dataset (.dta/.csv)
-- The dataset codebook (.xls) 
+- The dataset codebook (.xlsx) 
 - Methodology technical report (including questionnaire) (.pdf)
 - R analysis scripts (.Rmd)
 
