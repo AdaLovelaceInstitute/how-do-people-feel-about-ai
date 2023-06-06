@@ -1,5 +1,5 @@
 # How do people feel about AI? 
-Survey results of attitudes towards various uses of AI (Published June 2023, fieldwork undertaken November-December 2022). This was a nationally representative survey of 4,010 adults aged over 18 in Great Britain. Fieldwork was carried out by Kantar, the project was in partnership with The Alan Turing Insitute, and LSE's Methodology Department provided substantial input. You can also find this report and a summary on the [Ada Lovelace website](https://www.adalovelaceinstitute.org/xxx).
+Survey results of attitudes towards various uses of AI (Published June 2023, fieldwork undertaken November-December 2022). This was a nationally representative survey of 4,010 adults aged over 18 in Great Britain. Fieldwork was carried out by Kantar, the project was in partnership with The Alan Turing Insitute, and LSE's Methodology Department provided substantial input. You can also find this report and a summary on the [Ada Lovelace website](https://www.adalovelaceinstitute.org/report/public-attitudes-ai/).
 
 This repository contains:
 - The report (.pdf)
