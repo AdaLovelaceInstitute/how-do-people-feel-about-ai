@@ -13,3 +13,6 @@ This repository contains:
 We welcome pull requests e.g.
 - If you've used this data in some way, we'd love to include a link to your project in this README
 - If you've done some useful processing of the data and would like to add a new format for the dataset here
+
+## Using this dataset in your own work
+This dataset can be used freely as long as credit is given to the Ada Lovelace Institute and the Alan Turing Institute. We request that notice is also given by contacting the Ada Lovelace Institute (hello@adalovelaceinstitute.org) and that a copy of the research is shared with the same address at publication.
